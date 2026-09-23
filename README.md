@@ -11,7 +11,8 @@
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://cdn.jsdelivr.net/gh/squirrelmedia/dsh-oneclick@latest/install.ps1 | iex"
 ```
 
-也可以下载本仓库的 `install.bat` 后双击运行（效果相同）。
+也可以下载本仓库的 [install.bat](https://raw.githubusercontent.com/squirrelmedia/dsh-oneclick/main/install.bat)
+后双击运行（效果相同；jsDelivr 出于安全不分发 .bat 文件，故 bat 走 GitHub 直链）。
 
 安装完成后：桌面出现「DeepSeek Harness」快捷方式，双击即可打开 GUI
 （`http://127.0.0.1:3080/`）；登录 Windows 后服务自动在后台静默运行。
