@@ -282,7 +282,7 @@ Const GUI_PORT   = __GUI_PORT__
 Const LOG_FILE   = "__AUTOSTART_LOG__"
 Const SERVER_LOG = "__SERVER_LOG__"
 
-Dim fso, shell, netstatFile, guiPort
+Dim fso, shell, guiPort
 
 Set fso   = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
@@ -296,9 +296,23 @@ If IsPortListening(guiPort) Then
     WScript.Quit 0
 End If
 
+' Let the logon desktop settle before a heavy server process starts.
+WScript.Sleep 3000
+
+If IsPortListening(guiPort) Then
+    WriteLog "server appeared while waiting - nothing to do"
+    WScript.Quit 0
+End If
+
 shell.CurrentDirectory = WORK_DIR
 WriteLog "starting dsh web (silent, --no-open) ..."
+On Error Resume Next
 shell.Run "cmd /c " & Q(Q(NODE_EXE) & " " & Q(DSH_BIN) & " web --no-open --port " & guiPort & " >> " & Q(SERVER_LOG) & " 2>&1"), 0, False
+If Err.Number <> 0 Then
+    WriteLog "error: could not launch the server: " & Err.Description
+    Err.Clear
+End If
+On Error GoTo 0
 
 Dim i
 For i = 1 To 60
@@ -312,37 +326,50 @@ Else
 End If
 
 Sub EnsureDir(path)
+    On Error Resume Next
     If Not fso.FolderExists(path) Then fso.CreateFolder(path)
+    Err.Clear
+    On Error GoTo 0
 End Sub
 
 Sub WriteLog(message)
     Dim f
+    On Error Resume Next
     Set f = fso.OpenTextFile(LOG_FILE, 8, True)
-    f.WriteLine "[" & Now & "] " & message
-    f.Close
+    If Err.Number = 0 Then
+        f.WriteLine "[" & Now & "] " & message
+        f.Close
+    End If
+    Err.Clear
+    On Error GoTo 0
 End Sub
 
 Function Q(text)
     Q = Chr(34) & text & Chr(34)
 End Function
 
+' Listening probe over loopback HTTP: any HTTP response (200/303/401) proves the
+' port is served. No temp file and no child process, so concurrent scripts cannot
+' race on a shared file and boot-time polling stays cheap.
 Function IsPortListening(portNumber)
-    Dim f, line
-    netstatFile = fso.GetSpecialFolder(2) & "\dsh-netstat.txt"
-    shell.Run "cmd /c netstat -ano -p tcp > " & Q(netstatFile) & " 2>&1", 0, True
+    Dim http
     IsPortListening = False
-    If fso.FileExists(netstatFile) Then
-        Set f = fso.OpenTextFile(netstatFile, 1)
-        Do Until f.AtEndOfStream
-            line = f.ReadLine
-            If InStr(line, ":" & portNumber & " ") > 0 And InStr(line, "LISTENING") > 0 Then
-                IsPortListening = True
-                Exit Do
-            End If
-        Loop
-        f.Close
-        fso.DeleteFile netstatFile, True
+    On Error Resume Next
+    Set http = CreateObject("WinHttp.WinHttpRequest.5.1")
+    If Err.Number <> 0 Then
+        Err.Clear
+        Exit Function
     End If
+    http.SetProxy 1, "", ""
+    Err.Clear
+    http.SetTimeouts 700, 700, 700, 700
+    http.Open "GET", "http://127.0.0.1:" & portNumber & "/", False
+    If Err.Number = 0 Then
+        http.Send
+        If Err.Number = 0 Then IsPortListening = True
+    End If
+    Err.Clear
+    On Error GoTo 0
 End Function
 '@
 
@@ -361,7 +388,7 @@ Const GUI_PORT   = __GUI_PORT__
 Const LOG_FILE   = "__LAUNCHER_LOG__"
 Const SERVER_LOG = "__SERVER_LOG__"
 
-Dim fso, shell, netstatFile, guiPort, checkOnly, idx
+Dim fso, shell, guiPort, checkOnly, idx
 
 Set fso   = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
@@ -392,7 +419,13 @@ If Not IsPortListening(guiPort) Then
     startedByUs = True
     WriteLog "server not running on port " & guiPort & " - starting it silently"
     shell.CurrentDirectory = WORK_DIR
+    On Error Resume Next
     shell.Run "cmd /c " & Q(Q(NODE_EXE) & " " & Q(DSH_BIN) & " web --no-open --port " & guiPort & " >> " & Q(SERVER_LOG) & " 2>&1"), 0, False
+    If Err.Number <> 0 Then
+        WriteLog "error: could not launch the server: " & Err.Description
+        Err.Clear
+    End If
+    On Error GoTo 0
     For i = 1 To 120
         WScript.Sleep 500
         If IsPortListening(guiPort) Then Exit For
@@ -491,37 +524,50 @@ Function TokenUrlValid(url)
 End Function
 
 Sub EnsureDir(path)
+    On Error Resume Next
     If Not fso.FolderExists(path) Then fso.CreateFolder(path)
+    Err.Clear
+    On Error GoTo 0
 End Sub
 
 Sub WriteLog(message)
     Dim f
+    On Error Resume Next
     Set f = fso.OpenTextFile(LOG_FILE, 8, True)
-    f.WriteLine "[" & Now & "] " & message
-    f.Close
+    If Err.Number = 0 Then
+        f.WriteLine "[" & Now & "] " & message
+        f.Close
+    End If
+    Err.Clear
+    On Error GoTo 0
 End Sub
 
 Function Q(text)
     Q = Chr(34) & text & Chr(34)
 End Function
 
+' Listening probe over loopback HTTP: any HTTP response (200/303/401) proves the
+' port is served. No temp file and no child process, so concurrent scripts cannot
+' race on a shared file and boot-time polling stays cheap.
 Function IsPortListening(portNumber)
-    Dim f, line
-    netstatFile = fso.GetSpecialFolder(2) & "\dsh-netstat.txt"
-    shell.Run "cmd /c netstat -ano -p tcp > " & Q(netstatFile) & " 2>&1", 0, True
+    Dim http
     IsPortListening = False
-    If fso.FileExists(netstatFile) Then
-        Set f = fso.OpenTextFile(netstatFile, 1)
-        Do Until f.AtEndOfStream
-            line = f.ReadLine
-            If InStr(line, ":" & portNumber & " ") > 0 And InStr(line, "LISTENING") > 0 Then
-                IsPortListening = True
-                Exit Do
-            End If
-        Loop
-        f.Close
-        fso.DeleteFile netstatFile, True
+    On Error Resume Next
+    Set http = CreateObject("WinHttp.WinHttpRequest.5.1")
+    If Err.Number <> 0 Then
+        Err.Clear
+        Exit Function
     End If
+    http.SetProxy 1, "", ""
+    Err.Clear
+    http.SetTimeouts 700, 700, 700, 700
+    http.Open "GET", "http://127.0.0.1:" & portNumber & "/", False
+    If Err.Number = 0 Then
+        http.Send
+        If Err.Number = 0 Then IsPortListening = True
+    End If
+    Err.Clear
+    On Error GoTo 0
 End Function
 '@
 
